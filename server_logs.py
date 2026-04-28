@@ -50,7 +50,6 @@ def auth_log(malicious=False):
         f"from {ip} port {port}"
     )
 
-
 def service_log(malicious=False):
     services = [
         "nginx", "apache2", "mysql", "docker",
@@ -64,7 +63,6 @@ def service_log(malicious=False):
         f"{timestamp_syslog()} {random.choice(HOSTNAME)} systemd[1]: "
         f"{action} {random.choice(services)}.service"
     )
-
 
 def process_log(malicious=False):
     benign_cmds = [
