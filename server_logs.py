@@ -88,7 +88,6 @@ def process_log(malicious=False):
         f"user={random_user()} cmd=\"{cmd}\""
     )
 
-
 def filesystem_log(malicious=False):
     benign_paths = [
         "/var/log/syslog",
@@ -112,7 +111,6 @@ def filesystem_log(malicious=False):
         f"type=PATH msg=audit({timestamp_epoch()}:{random.randint(100,999)}): "
         f"name=\"{path}\" perm=\"{perm}\" user={random_user()}"
     )
-
 
 def generate():
     malicious = is_attack_wave()
